@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simulation Plan</title>
+  <style>
+    body {
+      font-family: "Georgia", serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      line-height: 1.7;
+      color: #222;
+      background: #fafafa;
+    }
+    h1, h2, h3 { color: #2c3e50; font-weight: normal; }
+    h1 { border-bottom: 3px solid #3498db; padding-bottom: 12px; }
+    h2 { border-left: 4px solid #3498db; padding-left: 12px; margin-top: 32px; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px 10px; }
+    th { background: #3498db; color: white; }
+    tr:nth-child(even) { background: #f9f9f9; }
+    code { background: #eee; padding: 2px 5px; border-radius: 3px; }
+    pre { background: #f5f5f5; padding: 12px; overflow-x: auto; }
+    hr { margin: 24px 0; }
+    ul { padding-left: 20px; }
+    ul.flat { list-style-type: disc; padding-left: 20px; margin-top: 8px; margin-bottom: 8px; }
+    ul.flat li { margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+<h1>Quantum Tomography Simulation Plan</h1>
+<h2>Overview</h2>
+<p>This plan describes how to run the full adaptive quantum tomography simulation (15 cases × 3 policies) using the current R implementation. It reflects the deterministic initialization, oracle-risk plotting, and the shared plot window specified in `quantum_tomography_tutorial.html` and the current R code.</p>
+<hr>
+<h2>1. Simulation Parameters (current defaults in `10_run_simulation.R`)</h2>
+<h3>1.1 Monte Carlo Parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`n_rep`</td><td>10</td><td>Number of Monte Carlo replicates per case</td></tr>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`seed_base`</td><td>2026</td><td>Base random seed for reproducibility</td></tr>
+<tr><td>`case_seeds`</td><td>NULL</td><td>Optional named list mapping `case_id` → fixed seed</td></tr>
+<tr><td>`system_seeds`</td><td>list(`1q`=2026, `2q`=2027)</td><td>Optional named list mapping system → fixed seed for true state</td></tr>
+<tr><td>`true_state_alpha`</td><td>0.99</td><td>Mix weight for pure state vs maximally mixed</td></tr>
+</tbody></table>
+<h3>1.2 Sample Size Parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`n_total`</td><td>100</td><td>Total samples per trajectory</td></tr>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`check_every`</td><td>1</td><td>Recompute MLE every sample (most accurate, slowest)</td></tr>
+</tbody></table>
+<h3>1.3 Numerical Stabilization Parameters</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`eta_mle`</td><td>1e-4</td><td>Eigenvalue floor for MLE constraint (ρ ≥ ηI)</td></tr>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`ridge_init`</td><td>1e-8</td><td>Ridge used only during initialization (selection + oracle risk)</td></tr>
+</tbody></table>
+<h3>1.4 Solver Options</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`solver`</td><td>"SCS"</td><td>CVXR solver</td></tr>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`verbose_solver`</td><td>FALSE</td><td>Suppress solver output</td></tr>
+</tbody></table>
+<h3>1.5 Plot Window</h3>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`plot_start`</td><td>20</td><td>Start of shared plot window</td></tr>
+<table>
+<thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>`plot_end`</td><td>100</td><td>End of shared plot window</td></tr>
+</tbody></table>
+<h3>1.6 Random Seed Policy (order-independent)</h3>
+<ul class="flat">
+<li>Each case uses a stable <code>case_id</code> string: <code>{system}_{library}_{loss}</code> (e.g., <code>1q_L1_frobenius</code>).</li>
+<li><strong>True state (non-random)</strong>:
+1‑qubit uses fixed pure state <code>|+><+|</code> (Bloch vector <code>(1,0,0)</code>);
+2‑qubit uses fixed pure Bell state <code>|Phi+><Phi+|</code>;
+then <code>rho_true = alpha * rho_pure + (1 - alpha) * I/N</code> using <code>true_state_alpha</code>.</li>
+<li><strong>Replicate seeds</strong> (per policy):
+use <code>case_seeds[[case_id]]</code> if provided, otherwise <code>seed_base</code>;
+then <code>stable_seed(case_id + "_" + policy + "_rep_" + r, rep_base_seed)</code>.</li>
+<li>L3 axes use a fixed seed (<code>seed=42</code>) and do not perturb global RNG state.</li>
+</ul>
+<hr>
+<h2>2. The 15 Experiment Cases</h2>
+<h3>2.1 One-Qubit Systems (N=2, d=3)</h3>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>L1</td><td>Frobenius</td><td>3</td><td>Pauli PVMs (X,Y,Z) + Hilbert–Schmidt loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>2</td><td>L1</td><td>Bures</td><td>3</td><td>Pauli PVMs + Bures loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>3</td><td>L1</td><td>Observable</td><td>3</td><td>Pauli PVMs + Observable-expectation loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>4</td><td>L2</td><td>Frobenius</td><td>9</td><td>Nine-axis PVMs + Hilbert–Schmidt loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>5</td><td>L2</td><td>Bures</td><td>9</td><td>Nine-axis PVMs + Bures loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>6</td><td>L2</td><td>Observable</td><td>9</td><td>Nine-axis PVMs + Observable-expectation loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>7</td><td>L3</td><td>Frobenius</td><td>4</td><td>Random 4-axis PVMs + Hilbert–Schmidt loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>8</td><td>L3</td><td>Bures</td><td>4</td><td>Random 4-axis PVMs + Bures loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>9</td><td>L3</td><td>Observable</td><td>4</td><td>Random 4-axis PVMs + Observable-expectation loss</td></tr>
+</tbody></table>
+<h3>2.2 Two-Qubit Systems (N=4, d=15)</h3>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>10</td><td>A</td><td>Frobenius</td><td>15</td><td>2</td><td>15 Pauli-parity PVMs + Hilbert–Schmidt loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>11</td><td>A</td><td>Bures</td><td>15</td><td>2</td><td>15 Pauli-parity PVMs + Bures loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>12</td><td>A</td><td>Observable</td><td>15</td><td>2</td><td>15 Pauli-parity PVMs + Observable-expectation loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>13</td><td>B</td><td>Frobenius</td><td>5</td><td>4</td><td>5 MUB bases + Hilbert–Schmidt loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>14</td><td>B</td><td>Bures</td><td>5</td><td>4</td><td>5 MUB bases + Bures loss</td></tr>
+<table>
+<thead><tr><th>Case</th><th>Library</th><th>Loss</th><th>k (settings)</th><th>r (outcomes)</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>15</td><td>B</td><td>Observable</td><td>5</td><td>4</td><td>5 MUB bases + Observable-expectation loss</td></tr>
+</tbody></table>
+<hr>
+<h2>3. Policies Compared</h2>
+<p>Each case compares three policies:</p>
+<p>1. **Uniform Sampling**: random selection among settings. 2. **Exact One-Step Lookahead**: minimize \(\mathrm{tr}(G(\hat\theta_n)(J_n + I_a)^{-1})\). 3. **GI1 (First-Order Proxy)**: maximize \(\mathrm{tr}(G(\hat\theta_n) J_n^{-1} I_a J_n^{-1})\).</p>
+<hr>
+<h2>4. Initialization (Deterministic, Fixed)</h2>
+<p>Initialization is <strong>deterministic</strong> to make \(J_n\) invertible before adaptive selection:</p>
+<ul class="flat">
+  <li><strong>L1</strong>: X, Y, Z (3 samples)</li>
+  <li><strong>L2</strong>: X, Y, Z (first 3 of 9) (3 samples)</li>
+  <li><strong>L3</strong>: all 4 random axes (fixed seed) (4 samples)</li>
+  <li><strong>A</strong>: all 15 Pauli-parity PVMs (15 samples)</li>
+  <li><strong>B</strong>: all 5 MUB bases (5 samples)</li>
+</ul>
+<hr>
+<h2>5. Oracle Risk vs Adaptive Selection</h2>
+<ul class="flat">
+  <li><strong>Adaptive selection</strong> uses MLE plug-in quantities \(J_n(\hat\theta_n)\) and \(G(\hat\theta_n)\).</li>
+  <li><strong>Plotting</strong> uses <strong>oracle risk</strong> at the true parameter \(\theta^*\):</li>
+</ul>
+<p>\[R_n^{\text{oracle}}(G) = \mathrm{tr}(G(\theta^*) J_n(\theta^*)^{-1})\]</p>
+<ul class="flat">
+  <li>Plots show <strong>scaled</strong> oracle risk: \(n \cdot R_n^{\text{oracle}}(G)\).</li>
+  <li><strong>True state is fixed per system (1q vs 2q)</strong> across all replicates, libraries, losses, and policies, so Monte Carlo variation comes only from measurement outcomes and MLE noise.</li>
+</ul>
+<hr>
+<h2>6. Outputs</h2>
+<p>All outputs are written under <code>R_implementations/results/</code>:</p>
+<pre><code>
+R_implementations/
+├── results/
+│   ├── plots/
+│   │   ├── case01_1q_L1_frobenius.png
+│   │   ├── case02_1q_L1_bures.png
+│   │   ├── ...
+│   │   ├── case15_2q_B_observable.png
+│   │   └── all_15_cases_combined.png
+│   ├── results.csv
+│   ├── simulation_config.rds
+│   └── full_results.rds
+</code></pre>
+<hr>
+<h2>7. How to Run</h2>
+<h3>Option A: Full 15‑Case Simulation</h3>
+<pre><code>
+setwd("/Users/arthur/myfile/Research simulation/Quantum_Xiaxuan/R_implementations")
+source("10_run_simulation.R")
+</code></pre>
+<p>This runs all 15 cases and generates all plots.</p>
+<h3>Option B: Single Case (example)</h3>
+<pre><code>
+setwd("/Users/arthur/myfile/Research simulation/Quantum_Xiaxuan/R_implementations")
+source("10_run_simulation.R")
+
+exp <- list(system = "2q", lib = "A", loss = "bures", case_num = 11)
+res <- run_experiment(exp, simulation_config)
+plot_experiment(res, output_dir = "results/plots", plot_start = 20, plot_end = 100)
+</code></pre>
+<hr>
+<h2>8. Expected Plot Content</h2>
+<p>Each plot shows:</p>
+<ul class="flat">
+  <li><strong>X-axis</strong>: number of samples \(n\), plotted only for \(n=20..100\)</li>
+  <li><strong>Y-axis</strong>: scaled oracle risk \(n \cdot R_n^{\text{oracle}}(G)\)</li>
+  <li><strong>Three curves</strong>: Uniform (gray), Exact (blue), GI1 (red dashed)</li>
+</ul>
+<hr>
+<h2>9. Runtime Notes</h2>
+<ul class="flat">
+  <li><code>check_every = 1</code> is slow but most accurate.</li>
+  <li>For faster runs, increase <code>check_every</code> (e.g., 5 or 10) or reduce <code>n_rep</code>.</li>
+</ul>
+<hr>
+<p><strong>Status</strong>: READY TO RUN</p>
+</body>
+</html>
