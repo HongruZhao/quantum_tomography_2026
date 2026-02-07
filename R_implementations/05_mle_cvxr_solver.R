@@ -10,6 +10,55 @@ source("04_measurement_library_2q.R")
 ## AFFINE PROBABILITY MODEL: p_{a,b}(θ) = c_{a,b} + (1/2) s(a,b)^T θ
 ## ==========================================================================
 
+#' Project a vector onto the simplex {x >= 0, sum(x) = s}
+#' @param v Numeric vector
+#' @param s Target sum (> 0)
+#' @return Projected vector
+project_simplex <- function(v, s = 1) {
+  v <- as.numeric(v)
+  n <- length(v)
+  if (n == 0) return(v)
+  if (s <= 0) return(rep(0, n))
+
+  u <- sort(v, decreasing = TRUE)
+  cssv <- cumsum(u)
+  rho <- max(which(u - (cssv - s) / seq_along(u) > 0))
+  theta <- (cssv[rho] - s) / rho
+  pmax(v - theta, 0)
+}
+
+#' Enforce rho ⪰ eta I with trace 1 by spectral projection
+#' @param rho Complex Hermitian density estimate
+#' @param eta Eigenvalue floor
+#' @param sigmas Basis matrices for theta extraction
+#' @return List with rho_hat, theta_hat, min_eig
+enforce_rho_floor <- function(rho, eta, sigmas) {
+  N <- nrow(rho)
+  H <- hermitianize(rho)
+  ee <- eigen(H, symmetric = FALSE)
+  lam <- Re(ee$values)
+  U <- ee$vectors
+
+  # Project eigenvalues onto {x_i >= eta, sum x_i = 1}
+  slack <- 1 - N * eta
+  if (slack <= 0) {
+    lam_proj <- rep(1 / N, N)
+  } else {
+    z <- project_simplex(lam - eta, s = slack)
+    lam_proj <- z + eta
+  }
+
+  rho_proj <- U %*% diag(lam_proj, nrow = N) %*% Conj(t(U))
+  rho_proj <- hermitianize(rho_proj)
+  # Normalize trace defensively.
+  rho_proj <- rho_proj / Re(traceC(rho_proj))
+
+  min_eig <- min(Re(eigen(rho_proj, symmetric = FALSE, only.values = TRUE)$values))
+  theta_proj <- theta_from_rho(rho_proj, sigmas)
+
+  list(rho_hat = rho_proj, theta_hat = theta_proj, min_eig = min_eig)
+}
+
 #' Build the affine probability model matrices S_ab and c_ab
 #' s_j(a,b) = tr(σ_j Q_{a,b}), c_{a,b} = tr(Q_{a,b})/N
 #' @param sigmas List of basis matrices
@@ -105,25 +154,28 @@ increment_count <- function(Nab, a, b, ab_row) {
 #' @param S_ab Coefficient matrix (M x d)
 #' @param c_ab Constant vector (length M)
 #' @param Nab Count vector (length M)
-#' @param eta Eigenvalue floor (0 < eta < 1/N, default 0)
+#' @param eta Eigenvalue floor (required eta >= 1e-3 and eta < 1/N)
 #' @param solver CVXR solver ("MOSEK", "ECOS", "SCS")
 #' @param eps_log Small constant for log stability
 #' @param verbose Print solver output
 #' @return List with theta_hat, rho_hat, status, value
 fit_theta_cvxr <- function(N, sigmas, S_ab, c_ab, Nab,
-                           eta = 0,
+                           eta = 1e-3,
                            solver = c("SCS", "ECOS", "MOSEK"),
                            eps_log = 1e-12,
                            verbose = FALSE) {
 
   solver <- match.arg(solver)
   d <- length(sigmas)
-  M <- length(c_ab)
+  eta_min <- 1e-3
 
-  # Check eta validity
+  # Enforce CVXR1121-style stabilized floor.
+  if (!is.finite(eta) || eta < eta_min) {
+    warning(sprintf("eta must be >= %.1e; using eta = %.1e", eta_min, eta_min))
+    eta <- eta_min
+  }
   if (eta >= 1/N) {
-    warning(sprintf("eta = %.4f must be < 1/N = %.4f; setting eta = 0", eta, 1/N))
-    eta <- 0
+    stop(sprintf("eta = %.4g must satisfy eta < 1/N = %.4g", eta, 1/N))
   }
 
   # CVXR variable: theta
@@ -147,12 +199,8 @@ theta_var <- Variable(d)
 
   # PSD variable representing real-embedded rho
   rho_var <- Variable(2 * N, 2 * N, PSD = TRUE)
-
-  # Negative log-likelihood objective
-  # Only include terms where Nab > 0 to avoid log(0) issues
-  active_idx <- which(Nab > 0)
-  if (length(active_idx) == 0) {
-    # No data: return zero theta
+  # No data: return maximally mixed estimate.
+  if (sum(Nab) <= 0) {
     theta_hat <- rep(0, d)
     rho_hat <- rho_of_theta(theta_hat, sigmas, N)
     return(list(
@@ -163,29 +211,23 @@ theta_var <- Variable(d)
     ))
   }
 
-  obj <- -sum_entries(Nab[active_idx] * log(p_expr[active_idx] + eps_log))
+  # CVXR1121-style objective over all cells.
+  obj <- -sum_entries(Nab * log(p_expr + eps_log))
 
   # Constraints
+  rho_floor <- Variable(2 * N, 2 * N, PSD = TRUE)
   constraints <- list(
     rho_var == A_affine,  # rho PSD via variable
-    p_expr >= eps_log     # Probabilities positive
+    p_expr >= 0,          # Probabilities non-negative
+    rho_floor == A_affine - eta * SI  # ρ(θ) ⪰ ηI
   )
-
-  # Add eigenvalue floor constraint if eta > 0
-  # ρ(θ) ⪰ η I  ⟺  rho_embed - η * SI ⪰ 0
-  if (eta > 0) {
-    rho_floor <- Variable(2 * N, 2 * N, PSD = TRUE)
-    constraints <- c(constraints, list(
-      rho_floor == A_affine - eta * SI
-    ))
-  }
 
   # Define and solve problem
   prob <- Problem(Minimize(obj), constraints)
 
   # Solver selection with fallback
   if (solver == "MOSEK" && !requireNamespace("Rmosek", quietly = TRUE)) {
-    solver <- "SCS"
+    solver <- "ECOS"
   }
   if (solver == "ECOS" && !requireNamespace("ECOSolveR", quietly = TRUE)) {
     solver <- "SCS"
@@ -201,9 +243,22 @@ theta_var <- Variable(d)
   })
 
   # Extract solution
+  floor_enforced <- FALSE
+  min_eig_raw <- NA_real_
+  min_eig_hat <- NA_real_
   if (res$status %in% c("optimal", "optimal_inaccurate")) {
     theta_hat <- drop(res$getValue(theta_var))
     rho_hat <- rho_of_theta(theta_hat, sigmas, N)
+    min_eig_raw <- min(Re(eigen(hermitianize(rho_hat), symmetric = FALSE, only.values = TRUE)$values))
+    if (!is.finite(min_eig_raw) || min_eig_raw < eta) {
+      proj <- enforce_rho_floor(rho_hat, eta, sigmas)
+      rho_hat <- proj$rho_hat
+      theta_hat <- proj$theta_hat
+      min_eig_hat <- proj$min_eig
+      floor_enforced <- TRUE
+    } else {
+      min_eig_hat <- min_eig_raw
+    }
   } else {
     theta_hat <- rep(NA, d)
     rho_hat <- matrix(NA, N, N)
@@ -213,7 +268,10 @@ theta_var <- Variable(d)
     theta_hat = theta_hat,
     rho_hat = rho_hat,
     status = res$status,
-    value = res$value
+    value = res$value,
+    floor_enforced = floor_enforced,
+    min_eig_raw = min_eig_raw,
+    min_eig_hat = min_eig_hat
   )
 }
 
@@ -231,7 +289,7 @@ theta_var <- Variable(d)
 #' @param verbose Print solver output
 #' @return MLE fit result
 fit_mle_from_data <- function(lib, sigmas, a_seq, b_seq,
-                              eta = 0, solver = "SCS", verbose = FALSE) {
+                              eta = 1e-3, solver = "SCS", verbose = FALSE) {
 
   N <- lib$N
 
@@ -284,7 +342,7 @@ nll_theta <- function(theta, S_ab, c_ab, Nab, eps = 1e-12) {
 # b_seq <- sample_outcome_sequence(a_seq, rho_true, L1$Q_list)
 #
 # # Fit MLE
-# fit <- fit_mle_from_data(L1, sigmas, a_seq, b_seq, eta = 1e-4, solver = "SCS")
+# fit <- fit_mle_from_data(L1, sigmas, a_seq, b_seq, eta = 1e-3, solver = "SCS")
 # cat("Solver status:", fit$status, "\n")
 # cat("Estimated theta:", round(fit$theta_hat, 4), "\n")
 # cat("Theta error:", round(sqrt(sum((fit$theta_hat - theta_true)^2)), 4), "\n")

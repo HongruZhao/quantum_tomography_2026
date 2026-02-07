@@ -59,7 +59,7 @@ validate_rho_of_theta <- function(sigmas, N, n_tests = 100, tol = 1e-10) {
 #' @param n_tests Number of tests
 #' @param tol Numerical tolerance
 #' @return Validation results
-validate_mle_eigenvalue_floor <- function(lib, sigmas, eta = 1e-4,
+validate_mle_eigenvalue_floor <- function(lib, sigmas, eta = 1e-3,
                                           n_tests = 10, tol = 1e-8) {
   N <- lib$N
   sc <- build_Sab_cab(sigmas, lib$Q_list, N, lib$ab_df)
@@ -85,7 +85,7 @@ validate_mle_eigenvalue_floor <- function(lib, sigmas, eta = 1e-4,
 
     if (fit$status %in% c("optimal", "optimal_inaccurate")) {
       rho_hat <- fit$rho_hat
-      eigs <- eigen(hermitianize(rho_hat), only.values = TRUE)$values
+      eigs <- eigen(hermitianize(rho_hat), symmetric = FALSE, only.values = TRUE)$values
       min_eig <- min(Re(eigs))
 
       # Check min eigenvalue >= eta - tolerance
@@ -147,7 +147,7 @@ validate_povm_psd <- function(lib, tol = 1e-10) {
   for (a in 1:lib$k) {
     for (b in seq_along(lib$Q_list[[a]])) {
       Q <- lib$Q_list[[a]][[b]]
-      eigs <- eigen(hermitianize(Q), only.values = TRUE)$values
+      eigs <- eigen(hermitianize(Q), symmetric = FALSE, only.values = TRUE)$values
       min_eig <- min(Re(eigs))
 
       key <- sprintf("%s_b%d", lib$setting_labels[a], b)
@@ -425,7 +425,7 @@ validate_selector_sanity <- function(lib, sigmas, n_tests = 10) {
 
     # Fit MLE
     fit <- fit_theta_cvxr(N, sigmas, sc$S_ab, sc$c_ab, Nab,
-                          eta = 1e-4, solver = "SCS")
+                          eta = 1e-3, solver = "SCS")
 
     if (!fit$status %in% c("optimal", "optimal_inaccurate")) {
       next

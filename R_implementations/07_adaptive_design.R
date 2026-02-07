@@ -7,6 +7,29 @@
 source("06_fisher_and_metrics.R")
 
 ## ==========================================================================
+## DENSITY-ERROR DIAGNOSTICS
+## ==========================================================================
+
+#' Compute density-matrix diagnostics from current estimate
+#' @param theta_hat Current Bloch estimate
+#' @param sigmas List of basis matrices
+#' @param N Hilbert-space dimension
+#' @param rho_true True density matrix
+#' @return Named list: mse, distance_fro, min_eig
+compute_density_diagnostics <- function(theta_hat, sigmas, N, rho_true) {
+  rho_hat <- rho_of_theta(theta_hat, sigmas, N)
+  delta <- rho_hat - rho_true
+  mse <- mean(Mod(delta)^2)
+  distance_fro <- sqrt(sum(Mod(delta)^2))
+  eigvals <- tryCatch(
+    eigen(hermitianize(rho_hat), symmetric = FALSE, only.values = TRUE)$values,
+    error = function(e) rep(NA_real_, N)
+  )
+  min_eig <- min(Re(eigvals), na.rm = TRUE)
+  list(mse = mse, distance_fro = distance_fro, min_eig = min_eig)
+}
+
+## ==========================================================================
 ## METRIC-WEIGHTED A-OPTIMAL SELECTION
 ## ==========================================================================
 
@@ -117,18 +140,20 @@ get_init_settings <- function(lib_name, k) {
 #' @param seed Random seed
 #' @param verbose Print progress
 #' @param check_every How often to recompute MLE (default 1 = every step)
+#' @param record_density_metrics If TRUE, store MSE/distance/min-eig trajectories
 #' @return List with full trajectory data
 adaptive_design_sequence_metric <- function(
     lib, sigmas, rho_true, n_total,
     metric_fun,
     policy = c("uniform", "exact", "GI1"),
     lib_name = NULL,
-    eta_mle = 1e-4,
+    eta_mle = 1e-3,
     ridge = 1e-8,
     solver = "SCS",
     seed = NULL,
     verbose = FALSE,
-    check_every = 1
+    check_every = 1,
+    record_density_metrics = FALSE
 ) {
   policy <- match.arg(policy)
   if (!is.null(seed)) set.seed(seed)
@@ -159,6 +184,9 @@ adaptive_design_sequence_metric <- function(
   Nab <- numeric(lib$M)
   risk_history <- numeric(n_total)        # n * R_n(G) using TRUE theta
   theta_history <- matrix(NA, n_total, d)
+  mse_history <- if (record_density_metrics) numeric(n_total) else NULL
+  distance_history <- if (record_density_metrics) numeric(n_total) else NULL
+  min_eig_history <- if (record_density_metrics) numeric(n_total) else NULL
 
   theta_hat <- rep(0, d)
 
@@ -202,6 +230,12 @@ adaptive_design_sequence_metric <- function(
     }
 
     theta_history[t, ] <- theta_hat
+    if (record_density_metrics) {
+      dd <- compute_density_diagnostics(theta_hat, sigmas, N, rho_true)
+      mse_history[t] <- dd$mse
+      distance_history[t] <- dd$distance_fro
+      min_eig_history[t] <- dd$min_eig
+    }
 
     # Compute SCALED oracle risk n * R_n(G) at TRUE theta (for plotting)
     # Adaptive selection itself is based on MLE (theta_hat).
@@ -228,6 +262,9 @@ adaptive_design_sequence_metric <- function(
     theta_true = theta_true,
     theta_history = theta_history,
     risk_history = risk_history,
+    mse_history = mse_history,
+    distance_history = distance_history,
+    min_eig_history = min_eig_history,
     counts_final = counts_by_setting(Nab, lib$ab_df)
   )
 }
@@ -338,7 +375,7 @@ run_monte_carlo <- function(lib, sigmas, n_total, metric_fun, policy,
 #   n_total = 50,
 #   metric_fun = metric_frob,
 #   policy = "GI1",
-#   eta_mle = 1e-4,
+#   eta_mle = 1e-3,
 #   solver = "SCS",
 #   seed = 456,
 #   verbose = TRUE

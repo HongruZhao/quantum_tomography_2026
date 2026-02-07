@@ -39,7 +39,7 @@
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>`n_rep`</td><td>10</td><td>Number of Monte Carlo replicates per case</td></tr>
+<tr><td>`n_rep`</td><td>1</td><td>Number of Monte Carlo replicates per case</td></tr>
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
@@ -52,7 +52,7 @@
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>`n_total`</td><td>100</td><td>Total samples per trajectory</td></tr>
+<tr><td>`n_total`</td><td>400</td><td>Total samples per trajectory</td></tr>
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
@@ -62,7 +62,7 @@
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>`eta_mle`</td><td>1e-4</td><td>Eigenvalue floor for MLE constraint (ρ ≥ ηI)</td></tr>
+<tr><td>`eta_mle`</td><td>1e-3</td><td>Eigenvalue floor for MLE constraint (ρ ≥ ηI)</td></tr>
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
@@ -89,15 +89,15 @@
 <table>
 <thead><tr><th>Parameter</th><th>Value</th><th>Description</th></tr></thead>
 <tbody>
-<tr><td>`plot_end`</td><td>100</td><td>End of shared plot window</td></tr>
+<tr><td>`plot_end`</td><td>400</td><td>End of shared plot window</td></tr>
 </tbody></table>
 <h3>1.6 Random Seed Policy (order-independent)</h3>
 <ul class="flat">
 <li>Each case uses a stable <code>case_id</code> string: <code>{system}_{library}_{loss}</code> (e.g., <code>1q_L1_frobenius</code>).</li>
 <li><strong>True state (non-random)</strong>:
-1‑qubit uses fixed pure state <code>|+><+|</code> (Bloch vector <code>(1,0,0)</code>);
-2‑qubit uses fixed pure Bell state <code>|Phi+><Phi+|</code>;
-then <code>rho_true = alpha * rho_pure + (1 - alpha) * I/N</code> using <code>true_state_alpha</code>.</li>
+1‑qubit uses <code>|psi_1q&gt; = cos(0.2)|0&gt; + i sin(0.2)|1&gt;</code>;
+2‑qubit uses <code>|psi_2q&gt; = cos(0.2)|00&gt; + i sin(0.2)|11&gt;</code>;
+then <code>rho_true = alpha * |psi&gt;&lt;psi| + (1 - alpha) * I/N</code> using <code>true_state_alpha</code>.</li>
 <li><strong>Replicate seeds</strong> (per policy):
 use <code>case_seeds[[case_id]]</code> if provided, otherwise <code>seed_base</code>;
 then <code>stable_seed(case_id + "_" + policy + "_rep_" + r, rep_base_seed)</code>.</li>
@@ -214,24 +214,24 @@ R_implementations/
 <h2>7. How to Run</h2>
 <h3>Option A: Full 15‑Case Simulation</h3>
 <pre><code>
-setwd("/Users/arthur/myfile/Research simulation/Quantum_Xiaxuan/R_implementations")
+setwd("/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations")
 source("10_run_simulation.R")
 </code></pre>
 <p>This runs all 15 cases and generates all plots.</p>
 <h3>Option B: Single Case (example)</h3>
 <pre><code>
-setwd("/Users/arthur/myfile/Research simulation/Quantum_Xiaxuan/R_implementations")
+setwd("/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations")
 source("10_run_simulation.R")
 
 exp <- list(system = "2q", lib = "A", loss = "bures", case_num = 11)
 res <- run_experiment(exp, simulation_config)
-plot_experiment(res, output_dir = "results/plots", plot_start = 20, plot_end = 100)
+plot_experiment(res, output_dir = "results/plots", plot_start = 20, plot_end = 400)
 </code></pre>
 <hr>
 <h2>8. Expected Plot Content</h2>
 <p>Each plot shows:</p>
 <ul class="flat">
-  <li><strong>X-axis</strong>: number of samples \(n\), plotted only for \(n=20..100\)</li>
+  <li><strong>X-axis</strong>: number of samples \(n\), plotted only for \(n=20..400\)</li>
   <li><strong>Y-axis</strong>: scaled oracle risk \(n \cdot R_n^{\text{oracle}}(G)\)</li>
   <li><strong>Three curves</strong>: Uniform (gray), Exact (blue), GI1 (red dashed)</li>
 </ul>

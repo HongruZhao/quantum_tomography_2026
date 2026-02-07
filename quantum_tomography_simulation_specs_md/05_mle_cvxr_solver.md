@@ -70,7 +70,7 @@ and the embedded affine map:
 It then introduces a CVXR PSD variable `rho` and constrains `rho == rho_R(theta)`.
 This enforces \(\rho(\theta)\succeq 0\) in the complex sense.
 
-## 4) Required modification: eigenvalue floor
+## 4) Enforced eigenvalue floor (current rule)
 
 We must additionally enforce:
 \[
@@ -82,23 +82,24 @@ In the real embedding, this becomes:
 \]
 
 ### Implementation detail
-Inside CVXR, add the constraint:
+Inside CVXR, enforce:
 
 ```r
 constraints <- list(
   rho == A_affine,
-  rho - eta*SI >> 0  # PSD constraint
+  p_expr >= 0,
+  rho_floor == A_affine - eta*SI  # rho_floor is PSD variable
 )
 ```
 
-If you keep `rho` as PSD already, the second line is the eigenvalue-floor margin.
+`eta` is fixed to be at least `1e-3`; values below `1e-3` are promoted to `1e-3`.
 
-### Proposed API change
-Modify or wrap `fit_theta_cvxr`:
+### Standard API
+Use:
 
 ```r
-fit_theta_cvxr <- function(..., eta = 0, eps_log = 1e-12, ...) {
-  # if eta > 0: add rho - eta*SI >> 0
+fit_theta_cvxr <- function(..., eta = 1e-3, eps_log = 1e-12, ...) {
+  # eta is required to satisfy eta >= 1e-3 and eta < 1/N
 }
 ```
 
@@ -111,12 +112,9 @@ solver briefly evaluates out-of-domain points.
 **Recommendation:** keep `eps_log` very small (e.g., 1e-12) and rely on the eigenvalue floor plus
 POVM positivity to prevent true probabilities near zero.
 
-### Probability positivity constraint (optional)
-Optionally enforce `p >= p_min` directly in CVXR:
-```r
-constraints <- c(constraints, list(p_expr >= p_min))
-```
-but this is usually redundant if `eta > 0` and all POVM effects are nonzero.
+### Probability positivity constraint
+Use `p_expr >= 0` directly in CVXR. This matches the CVXR1121 solver pattern and avoids
+artificially tightening feasibility with `p >= eps_log`.
 
 ### Solver choice
 CVXR1121.R supports `MOSEK`, `ECOS`, `SCS`. For semidefinite constraints, `SCS` works but may require:
@@ -139,4 +137,3 @@ Each MLE call should return:
 We will use:
 - `theta_hat` for Fisher information and metric computations,
 - `rho_hat` for Bures metric computations and probability sampling sanity checks.
-

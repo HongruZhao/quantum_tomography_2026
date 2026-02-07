@@ -74,26 +74,27 @@ p_{a,b}(\theta)=c_{a,b}+\frac12\,s(a,b)^\top \theta
 \]
 as in the PDF (Eq. 18).
 
-## 6) CVXR MLE in theta (already implemented, but needs stabilization extension)
+## 6) CVXR MLE in theta (standardized to CVXR1121-style with fixed floor)
 
-### `fit_theta_cvxr(N, sigmas, S_ab, c_ab, Nab, solver, eps_log, verbose)`
+### `fit_theta_cvxr(N, sigmas, S_ab, c_ab, Nab, eta=1e-3, solver, eps_log, verbose)`
 Solves:
 \[
-\min_\theta -\sum_{a,b} N_{a,b}\log\big(c_{a,b}+\tfrac12 S_{a,b}\theta\big)
+\min_\theta -\sum_{a,b} N_{a,b}\log\big(c_{a,b}+\tfrac12 S_{a,b}\theta + \varepsilon_{\log}\big)
 \quad\text{s.t.}\quad \rho(\theta)\succeq 0
 \]
 where PSD is imposed via real embedding and a CVXR PSD variable.
 
-**Required extension:** add the eigenvalue floor constraint
+The production solver enforces the eigenvalue floor constraint
 \[
 \rho(\theta)\succeq \eta I
 \]
-as recommended in the PDF (Eq. 1 and Eq. 9), with a user parameter `eta`.
+with \(\eta=10^{-3}\) by default (and never below \(10^{-3}\)).
 
-We will implement a new function:
-
-- `fit_theta_cvxr_stabilized(..., eta, ...)`  
-  or modify `fit_theta_cvxr` to accept `eta = 0` default and enforce `rho - eta*I ⪰ 0`.
+This follows the CVXR1121 formulation with:
+- affine probabilities \(p(\theta)=c+\tfrac12S\theta\),
+- CVXR PSD variable for \(\rho_{\mathbb R}(\theta)\),
+- explicit floor constraint \(\rho_{\mathbb R}(\theta)-\eta I_{\mathbb R}\succeq 0\),
+- probability constraint \(p(\theta)\ge 0\).
 
 ## 7) Fisher information and design selectors (partially implemented)
 
@@ -149,7 +150,7 @@ Minimum new functionality to match the PDF simulation section:
 
 1. **Pauli / Pauli-product basis builder** (N=2 and N=4).
 2. **Measurement library builders** for Libraries 1–3 and A–B.
-3. **Stabilized MLE**: add the eigenvalue floor constraint with parameter `eta`.
+3. **Stabilized MLE**: use the CVXR1121-style solver with eigenvalue floor \(\eta=10^{-3}\).
 4. **Loss metric matrix functions**:
    - `G_frobenius(sigmas)` (constant),
    - `G_bures(theta, sigmas, N)` (state-dependent),
@@ -157,4 +158,3 @@ Minimum new functionality to match the PDF simulation section:
 5. **Metric-weighted selection rules** (exact and GI1).
 6. **Initialization routine** to ensure \(J_n\) invertible (PDF Eq. 25).
 7. **Simulation controller** producing 15 Monte Carlo mean risk plots.
-

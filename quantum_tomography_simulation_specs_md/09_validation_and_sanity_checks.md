@@ -11,9 +11,9 @@ For random theta vectors:
 - Check `abs(Re(sum(diag(rho))) - 1) < tol`
 
 ### 1.2 PSD and eigenvalue floor feasibility
-For stabilized MLE with parameter `eta`:
+For stabilized MLE with standard floor `eta = 1e-3`:
 - ensure `eta < 1/N`
-- after solving, check `min(eigen(rho_hat)$values) >= eta - tol`
+- after solving, check `min(eigen(rho_hat)$values) >= 1e-3 - tol`
 
 ## 2) Measurement library checks
 
@@ -45,8 +45,8 @@ For random rho and each setting a:
   - `all(p >= -tol)`
   - `abs(sum(p) - 1) < tol`
 
-If using stabilized states (\(\rho\succeq\eta I\)), also check:
-- `min(p) >= eta * min(tr(Q_{a,b}))` up to tolerances
+If using stabilized states (\(\rho\succeq\eta I\) with \(\eta=10^{-3}\)), also check:
+- `min(p) >= 1e-3 * min(tr(Q_{a,b}))` up to tolerances
 
 ## 4) Fisher information sanity
 
@@ -99,4 +99,3 @@ Under uniform policy, the mean risk curve should be invariant to:
 provided the implementation uses the mapping `ab_df` consistently.
 
 This is a powerful way to catch indexing bugs.
-

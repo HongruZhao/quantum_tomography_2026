@@ -97,9 +97,9 @@ We follow the PDF notation but implement using the `ab_df / ab_row / Nab` layout
 
 ### Solver stability
 
-The PDF recommends a stabilized estimator constraint:
+The implementation uses a stabilized estimator constraint:
 \[
 \hat\rho \succeq \eta I,\quad 0<\eta<1/N,
 \]
-to avoid near-zero probabilities and Bures-metric blow-ups. This needs to be enforced in the CVXR formulation.
-
+with standard choice \(\eta = 10^{-3}\), to avoid near-zero probabilities and Bures-metric blow-ups.
+This is enforced in the CVXR formulation.

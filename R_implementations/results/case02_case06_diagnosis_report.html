@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Case02/Case06 Diagnosis from R Code</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 24px; line-height: 1.45; color: #111; }
+    h1, h2, h3 { margin: 0.9em 0 0.4em; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { background: #f6f8fa; border: 1px solid #d0d7de; padding: 12px; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin: 14px 0; }
+    th, td { border: 1px solid #d0d7de; padding: 6px 8px; text-align: left; font-size: 14px; }
+    th { background: #f6f8fa; }
+    .small { color: #444; font-size: 13px; }
+    .ok { color: #0a7a39; }
+    .warn { color: #9a6700; }
+  </style>
+</head>
+<body>
+  <h1>Case 02 and Case 06 Diagnosis (Code-Faithful)</h1>
+  <p>This report is derived only from executable R code in this repository (no .md assumptions).</p>
+
+  <h2>1) Scope and Cases</h2>
+  <table>
+    <thead>
+      <tr><th>Case</th><th>System</th><th>Library</th><th>Loss</th><th>From</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>02</td><td>1q</td><td>L1</td><td>bures</td><td><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/10_run_simulation.R:125-144</code></td></tr>
+      <tr><td>06</td><td>1q</td><td>L2</td><td>observable</td><td><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/10_run_simulation.R:125-144</code></td></tr>
+    </tbody>
+  </table>
+
+  <h2>2) Exact Mathematical Pipeline Used by the R Code</h2>
+
+  <h3>2.1 True state used for both cases</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/10_run_simulation.R:177-188</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/01_utilities.R:176-179,145-150</code></li>
+  </ul>
+  <pre>psi_1q(phi) = [cos(phi), i sin(phi)]^T, with phi = 0.2
+rho_pure = |psi_1q><psi_1q|
+rho_true(alpha) = alpha * rho_pure + (1 - alpha) * I_2 / 2
+alpha in simulation_config = 0.99</pre>
+
+  <h3>2.2 Measurement libraries</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/03_measurement_library_1q.R:98-124</code> (L1)</li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/03_measurement_library_1q.R:134-162</code> (L2)</li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/03_measurement_library_1q.R:18-46</code> (projectors and observables)</li>
+  </ul>
+  <pre>For direction u (normalized):
+B = u_x X + u_y Y + u_z Z
+Q+ = 0.5 * (I + B),   Q- = 0.5 * (I - B)
+
+L1 directions: X, Y, Z
+L2 directions: X, Y, Z, (X+Y)/sqrt(2), (X-Y)/sqrt(2), (X+Z)/sqrt(2), (X-Z)/sqrt(2), (Y+Z)/sqrt(2), (Y-Z)/sqrt(2)</pre>
+
+  <h3>2.3 Affine probability model + MLE</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/05_mle_cvxr_solver.R:20-52</code> (affine model)</li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/05_mle_cvxr_solver.R:162-275</code> (CVXR MLE)</li>
+  </ul>
+  <pre>s_j(a,b) = tr(sigma_j Q_{a,b})
+c_{a,b} = tr(Q_{a,b}) / N
+p_{a,b}(theta) = c_{a,b} + 0.5 * s(a,b)^T theta
+
+MLE(theta): minimize  -sum_{a,b} N_{a,b} * log(p_{a,b}(theta) + eps_log)
+subject to:
+  rho(theta) = I/N + 0.5 * sum_j theta_j sigma_j
+  rho(theta) is PSD (via real-embedded PSD variable)
+  p_{a,b}(theta) >= 0
+  rho(theta) - eta I is PSD
+  eta is promoted to at least 1e-3 and must satisfy eta < 1/N
+
+Post-solve safeguard:
+  if status is optimal/optimal_inaccurate and min_eig(rho_hat) < eta,
+  project rho_hat to enforce the floor and map back to theta_hat
+
+Used by simulation:
+eta_mle = 1e-3, eps_log = 1e-12, solver = SCS</pre>
+
+  <h3>2.4 Fisher information and risk proxy</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/06_fisher_and_metrics.R:22-39</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/06_fisher_and_metrics.R:66-82</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/06_fisher_and_metrics.R:240-257</code></li>
+  </ul>
+  <pre>I_a(theta)_{jk} = 0.25 * sum_b s_j(a,b) s_k(a,b) / p_{a,b}(theta)
+J_n(theta) = sum_a N_a * I_a(theta)
+proxy_risk(G, J) = tr(G * J^{-1})   (with pseudo-inverse fallback if singular)</pre>
+
+  <h3>2.5 Metric for each case</h3>
+  <p><strong>Case 02 (bures):</strong> <code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/06_fisher_and_metrics.R:112-173</code></p>
+  <pre>Omega_rho(X) = 0.5 * (rho X + X rho)
+[G_B(theta)]_{jk} = (1/16) * tr( sigma_j * Omega_rho(theta)^{-1}(sigma_k) )</pre>
+  <p><strong>Case 06 (observable):</strong> <code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/06_fisher_and_metrics.R:179-201</code></p>
+  <pre>o_j[k] = tr(sigma_k O_j), where O_j are library observables (L2 gives 9 observables)
+G_O = (1/4) * sum_j o_j o_j^T</pre>
+
+  <h3>2.6 Adaptive selection rules actually used</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/07_adaptive_design.R:44-75</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/07_adaptive_design.R:166-183</code></li>
+  </ul>
+  <pre>At step t (after init), using current theta_hat and G_hat = metric_fun(theta_hat):
+
+Exact selection:
+  a_t = argmin_a tr( G_hat * (J_n(theta_hat) + I_a(theta_hat))^{-1} )
+
+GI1 selection:
+  a_t = argmax_a tr( G_hat * J_n(theta_hat)^{-1} * I_a(theta_hat) * J_n(theta_hat)^{-1} )</pre>
+
+  <h3>2.7 Plotted quantity and oracle line</h3>
+  <p>Code path:</p>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/07_adaptive_design.R:206-213</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/10_run_simulation.R:389-406</code></li>
+  </ul>
+  <pre>For each trajectory time t:
+  risk_history[t] = t * tr( G_true * J_t(theta_true)^{-1} )
+
+Oracle limit line:
+  I(pi) = sum_a pi_a I_a(theta_true)
+  pi* = argmin_{pi in simplex} tr( G_true * I(pi)^{-1} )
+  oracle_limit = tr( G_true * I(pi*)^{-1} )</pre>
+
+  <h2>3) What Was the Mistake?</h2>
+  <p class="warn"><strong>Mistake made:</strong> treating one trajectory (<code>n_rep = 1</code>) as sufficient evidence for convergence quality at <code>n = 400</code>. That is too noisy and can make exact/GI1 look inconsistent relative to oracle.</p>
+  <p>There is also a systematic finite-sample effect from the implemented policy structure: it is certainty-equivalent greedy (no forced exploration term), and L2 initialization uses only settings 1:3 initially (<code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/07_adaptive_design.R:95-101</code>), not all nine axes.</p>
+
+  <h2>4) Numerical-Stability Checks</h2>
+  <ul>
+    <li>MLE uses <code>eta_mle = 1e-3</code>, <code>eps_log = 1e-12</code>, CVXR constraints <code>p_expr &gt;= 0</code> and <code>rho(theta)-eta I ⪰ 0</code>, plus post-solve eigenvalue-floor projection when needed.</li>
+    <li>Fisher and risk use probability clipping / pseudo-inverse fallback.</li>
+    <li>Oracle SDP cross-checked with mirror-descent backup.</li>
+  </ul>
+  <table>
+    <thead><tr><th>Case</th><th>CVXR oracle</th><th>Mirror oracle</th><th>|diff|</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>1q_L1_bures</td><td>10.1452407044</td><td>10.1452405668</td><td>1.37655e-07</td><td class="ok">consistent</td></tr>
+      <tr><td>1q_L2_observable</td><td>13.7829318404</td><td>13.7829378766</td><td>6.03622e-06</td><td class="ok">consistent</td></tr>
+    </tbody>
+  </table>
+  <p class="small">Source CSV: <code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/case02_case06_oracle_solver_crosscheck.csv</code></p>
+
+  <h2>5) Seed-Sensitivity Results (Completed Runs)</h2>
+  <p>From <code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/case02_case06_diagnosis_summary.csv</code>.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Run</th><th>Case</th><th>Oracle</th><th>Uniform@400</th><th>Exact@400</th><th>GI1@400</th><th>Exact-Oracle</th><th>GI1-Oracle</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>baseline_nrep1_seedbase2026</td><td>1q_L1_bures</td><td>10.14524</td><td>11.85794</td><td>11.07452</td><td>10.64444</td><td>0.92928</td><td>0.49920</td></tr>
+      <tr><td>baseline_nrep1_seedbase2026</td><td>1q_L2_observable</td><td>13.78293</td><td>14.75099</td><td>14.26924</td><td>13.81890</td><td>0.48631</td><td>0.03597</td></tr>
+      <tr><td>seedcheck_nrep1_case2=3030_case6=4040</td><td>1q_L1_bures</td><td>10.14524</td><td>11.62528</td><td>10.78699</td><td>10.22768</td><td>0.64175</td><td>0.08244</td></tr>
+      <tr><td>seedcheck_nrep1_case2=3030_case6=4040</td><td>1q_L2_observable</td><td>13.78293</td><td>15.33595</td><td>13.93363</td><td>13.98513</td><td>0.15069</td><td>0.20220</td></tr>
+      <tr><td>seedcheck_nrep1_case2=5050_case6=6060</td><td>1q_L1_bures</td><td>10.14524</td><td>11.20568</td><td>10.31716</td><td>10.18721</td><td>0.17192</td><td>0.04197</td></tr>
+      <tr><td>seedcheck_nrep1_case2=5050_case6=6060</td><td>1q_L2_observable</td><td>13.78293</td><td>14.67780</td><td>13.88448</td><td>13.85543</td><td>0.10155</td><td>0.07250</td></tr>
+      <tr><td>nrep3</td><td>1q_L1_bures</td><td>10.14524</td><td>11.67135</td><td>10.96783</td><td>10.85549</td><td>0.82259</td><td>0.71025</td></tr>
+      <tr><td>nrep3</td><td>1q_L2_observable</td><td>13.78293</td><td>14.87475</td><td>14.12285</td><td>14.18687</td><td>0.33992</td><td>0.40394</td></tr>
+    </tbody>
+  </table>
+
+  <h2>6) Conclusion</h2>
+  <ul>
+    <li><strong>No oracle-line computation bug detected</strong> (CVXR and mirror oracle values agree tightly).</li>
+    <li>The non-overlap with oracle at <code>n=400</code> in Case 02/06 is consistent with finite-sample + seed sensitivity under certainty-equivalent greedy adaptation.</li>
+    <li>The main methodological issue in my earlier interpretation was relying on <code>n_rep=1</code> and over-reading convergence.</li>
+  </ul>
+
+  <h2>7) Files Produced for You</h2>
+  <ul>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/case02_case06_diagnosis_report.html</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/case02_case06_diagnosis_summary.csv</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/case02_case06_oracle_solver_crosscheck.csv</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/plots_seedcheck/case02_1q_L1_bures_seed5050_nrep3.png</code></li>
+    <li><code>/Users/cyberslave/GitHub/quantum_tomography_2026/R_implementations/results/plots_seedcheck/case06_1q_L2_observable_seed6060_nrep3.png</code></li>
+  </ul>
+</body>
+</html>

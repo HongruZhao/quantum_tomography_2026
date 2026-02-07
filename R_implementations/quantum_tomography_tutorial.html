@@ -508,7 +508,7 @@
             </div>
 
             <div class="warning">
-                <strong>Constraint:</strong> The eigenvalue floor must satisfy $0 < \eta < \frac{1}{N}$ to ensure feasibility. For $N=2$, use $\eta < 0.5$; for $N=4$, use $\eta < 0.25$.
+                <strong>Constraint:</strong> In the current CVXR implementation, use $\eta \ge 10^{-3}$ and $\eta < \frac{1}{N}$ to ensure feasibility and numerical stability. For $N=2$, use $10^{-3} \le \eta < 0.5$; for $N=4$, use $10^{-3} \le \eta < 0.25$.
             </div>
 
             <h3>2.3 Fisher Information</h3>
@@ -960,7 +960,7 @@ a_seq <- sample(1:3, 100, replace = TRUE)
 b_seq <- sample_outcome_sequence(a_seq, rho_true, L1$Q_list)
 
 # Fit MLE with eigenvalue floor
-fit <- fit_mle_from_data(L1, sigmas, a_seq, b_seq, eta = 1e-4)
+fit <- fit_mle_from_data(L1, sigmas, a_seq, b_seq, eta = 1e-3)
 cat("Status:", fit$status, "\n")
 cat("Error:", sqrt(sum((fit$theta_hat - theta_true)^2)), "\n")</pre>
             </div>
@@ -998,8 +998,9 @@ plot(result$risk_history, type = "l",
             <div class="code-block">
 <pre># Configure simulation
 sim_cfg <- default_sim_config()
-sim_cfg$n_rep <- 100    # 100 replicates
-sim_cfg$n_total <- 500  # 500 samples per trajectory
+sim_cfg$n_rep <- 1
+sim_cfg$n_total <- 400
+sim_cfg$eta_mle <- 1e-3
 
 # Run all 15 experiments (takes time!)
 results <- run_all_experiments(
@@ -1025,40 +1026,35 @@ plot_risk_curves(test)</pre>
         <section>
             <h2>9. Simulation Setup Details</h2>
 
-            <h3>9.1 Generating Initial Samples</h3>
-            <p>True states are generated using the <strong>Ginibre ensemble with identity mixing</strong>:</p>
+            <h3>9.1 Fixed True States Used by the Simulation</h3>
+            <p>The current run script uses deterministic true states (not Ginibre-random):</p>
 
             <div class="definition-box">
-                <h4>Algorithm: Random Full-Rank Density Matrix</h4>
-                <ol>
-                    <li>Draw complex Ginibre matrix: $G_{ij} \sim \mathcal{N}(0,1) + i\mathcal{N}(0,1)$</li>
-                    <li>Form Wishart matrix: $W = GG^\dagger$ (positive semidefinite)</li>
-                    <li>Normalize: $\rho_0 = W / \text{tr}(W)$</li>
-                    <li>Mix with identity: $\rho^* = (1-\varepsilon)\rho_0 + \varepsilon \frac{I}{N}$</li>
-                </ol>
-                <p>Default: $\varepsilon = 0.05$</p>
+                <h4>One-qubit and Two-qubit True States</h4>
+                <p>One qubit:</p>
+                <div class="math-block centered">
+                    $$|\psi_{1q}\rangle = \cos(0.2)|0\rangle + i\sin(0.2)|1\rangle, \qquad
+                    \rho_\star^{(1q)}(\alpha) = \alpha |\psi_{1q}\rangle\langle\psi_{1q}| + (1-\alpha)\frac{I_2}{2}$$
+                </div>
+                <p>Two qubits:</p>
+                <div class="math-block centered">
+                    $$|\psi_{2q}\rangle = \cos(0.2)|00\rangle + i\sin(0.2)|11\rangle, \qquad
+                    \rho_\star^{(2q)}(\alpha) = \alpha |\psi_{2q}\rangle\langle\psi_{2q}| + (1-\alpha)\frac{I_4}{4}$$
+                </div>
+                <p>Current default: $\alpha = 0.99$.</p>
             </div>
 
             <div class="code-block">
-<pre>random_density_fullrank <- function(N, eps_mix = 0.05, seed = NULL) {
-  # 1. Draw complex Ginibre matrix
-  G <- matrix(rnorm(N*N) + 1i*rnorm(N*N), N, N)
-
-  # 2. Form Wishart-type PSD matrix
-  W <- G %*% Conj(t(G))
-
-  # 3. Normalize to trace 1
-  rho0 <- W / Re(sum(diag(W)))
-
-  # 4. Mix with identity (ensures full rank)
-  rho <- (1 - eps_mix) * rho0 + eps_mix * diag(N) / N
-
-  return(rho)
+<pre>build_true_state_for_system <- function(system, alpha) {
+  if (system == "1q") {
+    rho_pure <- fixed_pure_state_1q_yphase(phi = 0.2)
+  } else if (system == "2q") {
+    rho_pure <- fixed_pure_state_2q_phi_phase(phi = 0.2)
+  } else {
+    stop(paste("Unknown system:", system))
+  }
+  mix_with_maximally_mixed(rho_pure, alpha)
 }</pre>
-            </div>
-
-            <div class="note">
-                <strong>Why mix with identity?</strong> Mixing with $\varepsilon \cdot I/N$ ensures all eigenvalues are at least $\varepsilon/N$, preventing numerical issues with near-singular states.
             </div>
 
             <h3>9.2 Initialization Phase</h3>
@@ -1085,16 +1081,16 @@ plot_risk_curves(test)</pre>
 
             <div class="note">
                 <strong>Plotting convention:</strong> adaptive selection begins at $n=4$ (one-qubit), $n=15$ (Library A),
-                and $n=5$ (Library B). Plots show only the shared range $n=20$ to $n=100$ for all cases.
+                and $n=5$ (Library B). Plots show only the shared range $n=20$ to $n=400$ for all cases.
             </div>
 
             <h3>9.3 Simulation Parameters</h3>
             <table>
                 <tr><th>Parameter</th><th>Default</th><th>Description</th></tr>
-                <tr><td>$n_{\text{rep}}$</td><td>100</td><td>Monte Carlo replicates</td></tr>
-                <tr><td>$n_{\text{total}}$</td><td>500</td><td>Samples per trajectory</td></tr>
-                <tr><td>$\eta$</td><td>$10^{-4}$</td><td>Eigenvalue floor for MLE</td></tr>
-                <tr><td>ridge</td><td>$10^{-6}$</td><td>Ridge for early selection</td></tr>
+                <tr><td>$n_{\text{rep}}$</td><td>1</td><td>Monte Carlo replicates</td></tr>
+                <tr><td>$n_{\text{total}}$</td><td>400</td><td>Samples per trajectory</td></tr>
+                <tr><td>$\eta$</td><td>$10^{-3}$</td><td>Eigenvalue floor for MLE</td></tr>
+                <tr><td>ridge</td><td>$10^{-8}$</td><td>Ridge for early selection</td></tr>
                 <tr><td>solver</td><td>"SCS"</td><td>CVXR solver</td></tr>
             </table>
 

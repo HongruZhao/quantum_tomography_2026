@@ -30,7 +30,7 @@ sim_cfg <- list(
   check_every = 1,      # recompute MLE/metrics every this many steps (can be >1)
 
   # stabilization / conditioning
-  eta_mle = 1e-4,       # eigenvalue floor for MLE (must satisfy eta < 1/N)
+  eta_mle = 1e-3,       # eigenvalue floor for MLE (must satisfy eta < 1/N)
   ridge_init = 1e-6,    # ridge used before invertible (optional)
 
   # CVXR options
@@ -41,8 +41,8 @@ sim_cfg <- list(
 ```
 
 ### Suggested defaults and scaling
-- For N=2, eta_mle can be ~1e-4 to 1e-3.
-- For N=4, eta_mle must be < 0.25; 1e-4 is safe.
+- Use `eta_mle = 1e-3` as the standard stabilized floor.
+- For N=4, maintain `eta_mle < 0.25` for feasibility.
 - `n_total=500` is a reasonable starting point; increase to 1e3 if compute allows.
 - `n_rep=200` yields smooth mean curves; reduce if the CVXR loop is slow.
 
@@ -53,7 +53,7 @@ sim_cfg <- list(
 Each replicate requires a true state \(\rho^\star\succ0\).
 We need a generator that:
 - outputs `rho_true` and `theta_true` (in the chosen basis),
-- respects eigenvalue floor optionally (for consistency with the stabilized MLE assumptions).
+- enforces the eigenvalue floor (`eta_mle = 1e-3` by default) for consistency with stabilized MLE assumptions.
 
 ### Recommended generator: random density matrix + mixing with identity
 Algorithm:

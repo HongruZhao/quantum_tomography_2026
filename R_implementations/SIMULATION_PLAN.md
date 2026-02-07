@@ -25,7 +25,7 @@ This plan describes how to run the full adaptive quantum tomography simulation (
 ### 1.3 Numerical Stabilization Parameters
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `eta_mle` | 1e-4 | Eigenvalue floor for MLE constraint (ρ ≥ ηI) |
+| `eta_mle` | 1e-3 | Eigenvalue floor for MLE constraint (ρ ≥ ηI) |
 | `ridge_init` | 1e-8 | Ridge used only during initialization (selection + oracle risk) |
 
 ### 1.4 Solver Options

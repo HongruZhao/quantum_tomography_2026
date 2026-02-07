@@ -162,7 +162,7 @@ adaptive_design_sequence_metric <- function(
   metric_fun,           # function(theta_hat) -> G matrix
   policy = c("uniform","exact","GI1"),
   ridge_init = 1e-6,
-  eta_mle = 1e-4,
+  eta_mle = 1e-3,
   solver = "SCS",
   check_every = 1,
   seed = NULL

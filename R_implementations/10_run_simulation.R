@@ -52,6 +52,30 @@ cat("All dependencies loaded successfully.\n\n")
 ## 1. SIMULATION CONFIGURATION
 ## ==========================================================================
 
+detect_parallel_workers <- function(default = 1L) {
+  nc <- suppressWarnings(parallel::detectCores(logical = TRUE))
+  if (is.na(nc) || nc < 1L) nc <- NA_integer_
+
+  if (is.na(nc) || nc <= 1L) {
+    out <- tryCatch(system("getconf _NPROCESSORS_ONLN", intern = TRUE), error = function(e) character(0))
+    if (length(out) > 0) {
+      val <- suppressWarnings(as.integer(out[1]))
+      if (!is.na(val) && val > 1L) nc <- val
+    }
+  }
+
+  if ((is.na(nc) || nc <= 1L) && identical(Sys.info()[["sysname"]], "Linux")) {
+    out <- tryCatch(system("nproc", intern = TRUE), error = function(e) character(0))
+    if (length(out) > 0) {
+      val <- suppressWarnings(as.integer(out[1]))
+      if (!is.na(val) && val > 1L) nc <- val
+    }
+  }
+
+  if (is.na(nc) || nc < 1L) nc <- as.integer(default)
+  as.integer(nc)
+}
+
 # Use default config and override key parameters as needed
 simulation_config <- default_sim_config()
 
@@ -75,10 +99,13 @@ simulation_config$ridge_init <- 1e-8
 
 # Solver
 simulation_config$solver <- "SCS"
+simulation_config$n_workers <- {
+  detect_parallel_workers(default = 1L)
+}
 
 # Plot window (common across all cases)
 plot_start <- 20
-plot_end <- 100
+plot_end <- 400
 
 cat("SIMULATION CONFIGURATION:\n")
 cat(sprintf("  - Monte Carlo replicates: %d\n", simulation_config$n_rep))
@@ -86,6 +113,7 @@ cat(sprintf("  - Samples per trajectory: %d\n", simulation_config$n_total))
 cat(sprintf("  - MLE recompute every: %d steps\n", simulation_config$check_every))
 cat(sprintf("  - Eigenvalue floor (eta): %.2e\n", simulation_config$eta_mle))
 cat(sprintf("  - CVXR solver: %s\n", simulation_config$solver))
+cat(sprintf("  - Parallel workers: %d\n", simulation_config$n_workers))
 cat(sprintf("  - True-state mix alpha: %.2f\n", simulation_config$true_state_alpha))
 cat(sprintf("  - Plot window: n = %d..%d\n", plot_start, plot_end))
 cat("\n")
@@ -144,6 +172,19 @@ get_metric_function <- function(loss_name, sigmas, N, lib) {
     },
     stop(paste("Unknown loss:", loss_name))
   )
+}
+
+# Build the fixed true state by system, matching the manuscript table setup:
+# rho_star(alpha) = alpha * |psi><psi| + (1-alpha) * I/N.
+build_true_state_for_system <- function(system, alpha) {
+  if (system == "1q") {
+    rho_pure <- fixed_pure_state_1q_yphase(phi = 0.2)
+  } else if (system == "2q") {
+    rho_pure <- fixed_pure_state_2q_phi_phase(phi = 0.2)
+  } else {
+    stop(paste("Unknown system:", system))
+  }
+  mix_with_maximally_mixed(rho_pure, alpha)
 }
 
 solve_optimal_design <- function(I_list, G, solver = "SCS") {
@@ -225,6 +266,39 @@ solve_optimal_design_mirror <- function(I_list, G, ridge = 1e-8, max_iter = 5000
   list(pi = pi, value = f_val, iter = iter)
 }
 
+compute_plot_ylim <- function(risk_values, oracle_limit = NULL, floor_zero = TRUE) {
+  valid_risks <- risk_values[is.finite(risk_values)]
+
+  if (length(valid_risks) == 0) {
+    y_min <- 0
+    y_max <- 1
+  } else {
+    y_range <- range(valid_risks, na.rm = TRUE)
+    span <- y_range[2] - y_range[1]
+    y_pad <- if (is.finite(span) && span > 0) {
+      0.05 * span
+    } else {
+      max(1e-6, abs(y_range[1]) * 0.05 + 1e-6)
+    }
+    y_min <- y_range[1] - y_pad
+    y_max <- y_range[2] + y_pad
+  }
+
+  if (!is.null(oracle_limit) && is.finite(oracle_limit)) {
+    oracle_eps <- max(1e-6, abs(oracle_limit) * 0.02)
+    y_min <- min(y_min, oracle_limit - oracle_eps)
+    y_max <- max(y_max, oracle_limit + oracle_eps)
+  }
+
+  if (floor_zero) y_min <- max(0, y_min)
+  if (!is.finite(y_min) || !is.finite(y_max) || y_max <= y_min) {
+    y_min <- if (is.finite(y_min)) y_min else 0
+    y_max <- y_min + max(1e-6, abs(y_min) * 0.05 + 1e-6)
+  }
+
+  c(y_min, y_max)
+}
+
 plot_experiment <- function(exp_result, output_dir, plot_start, plot_end) {
   if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
 
@@ -238,20 +312,7 @@ plot_experiment <- function(exp_result, output_dir, plot_start, plot_end) {
   gi1_risk <- exp_result$results$GI1$mean_risk[x_start:x_end]
 
   all_risks <- c(uniform_risk, exact_risk, gi1_risk)
-  valid_risks <- all_risks[is.finite(all_risks)]
-  y_range <- range(valid_risks, na.rm = TRUE)
-  y_pad <- (y_range[2] - y_range[1]) * 0.05
-  y_min <- y_range[1] - y_pad
-  y_max <- y_range[2] + y_pad
-
-  # Ensure oracle limit is visible with a small margin below it
-  if (!is.null(exp_result$oracle_limit) && is.finite(exp_result$oracle_limit)) {
-    oracle_eps <- max(1e-6, abs(exp_result$oracle_limit) * 0.02)
-    y_min <- min(y_min, exp_result$oracle_limit - oracle_eps)
-    y_max <- max(y_max, exp_result$oracle_limit + oracle_eps)
-  }
-
-  y_lim <- c(max(0, y_min), y_max)
+  y_lim <- compute_plot_ylim(all_risks, oracle_limit = exp_result$oracle_limit, floor_zero = TRUE)
 
   system_name <- ifelse(exp_result$system == "1q", "One-Qubit", "Two-Qubit")
   lib_full <- switch(exp_result$library,
@@ -323,13 +384,7 @@ run_experiment <- function(exp, cfg) {
   sigmas <- basis$sigmas
   N <- lib$N
   metric_fun <- get_metric_function(exp$loss, sigmas, N, lib)
-  # True state seed is shared across all cases within the same system ("1q"/"2q").
-  rho_base_seed <- cfg$seed_base
-  if (!is.null(cfg$system_seeds) && !is.null(cfg$system_seeds[[exp$system]])) {
-    rho_base_seed <- as.integer(cfg$system_seeds[[exp$system]])
-  }
-  rho_pure <- if (exp$system == "1q") fixed_pure_state_1q_plus() else fixed_pure_state_2q_00()
-  rho_true_fixed <- mix_with_maximally_mixed(rho_pure, cfg$true_state_alpha)
+  rho_true_fixed <- build_true_state_for_system(exp$system, cfg$true_state_alpha)
 
   # Compute oracle limit for plotting: lim_{n} n * R_n(G) = tr(G I_pi*^{-1})
   theta_true <- theta_from_rho(rho_true_fixed, sigmas)
@@ -420,13 +475,35 @@ run_full_simulation <- function(cfg = simulation_config,
   all_results <- list()
   all_data <- data.frame()
 
-  for (exp in experiment_grid) {
-    exp_result <- run_experiment(exp, cfg)
+  n_workers <- if (!is.null(cfg$n_workers) && is.finite(cfg$n_workers)) {
+    max(1L, as.integer(cfg$n_workers))
+  } else {
+    detect_parallel_workers(default = 1L)
+  }
+  n_workers <- min(n_workers, length(experiment_grid))
 
-    # Store results
+  if (.Platform$OS.type == "windows" && n_workers > 1L) {
+    cat(sprintf("Parallel mclapply unavailable on Windows; falling back to sequential run.\n"))
+    n_workers <- 1L
+  }
+
+  if (n_workers > 1L) {
+    cat(sprintf("Running %d cases in parallel using %d workers...\n",
+                length(experiment_grid), n_workers))
+    exp_results <- parallel::mclapply(
+      experiment_grid,
+      function(exp) run_experiment(exp, cfg),
+      mc.cores = n_workers,
+      mc.preschedule = FALSE
+    )
+  } else {
+    cat("Running cases sequentially...\n")
+    exp_results <- lapply(experiment_grid, function(exp) run_experiment(exp, cfg))
+  }
+
+  for (exp_result in exp_results) {
     all_results[[exp_result$case_id]] <- exp_result
 
-    # Save tidy rows
     for (policy in names(exp_result$results)) {
       r <- exp_result$results[[policy]]
       df_policy <- data.frame(
@@ -443,7 +520,6 @@ run_full_simulation <- function(cfg = simulation_config,
       all_data <- rbind(all_data, df_policy)
     }
 
-    # Plot individual case
     plot_experiment(exp_result, plots_dir, plot_start, plot_end)
   }
 
@@ -489,10 +565,10 @@ generate_combined_plot <- function(all_results, output_dir = "results",
     gi1 <- r$results$GI1$mean_risk[x_start:x_end]
 
     all_r <- c(uniform, exact, gi1)
-    y_range <- range(all_r[is.finite(all_r)], na.rm = TRUE)
+    y_lim <- compute_plot_ylim(all_r, oracle_limit = r$oracle_limit, floor_zero = TRUE)
 
     plot(n_seq, uniform, type = "l", col = "gray40", lwd = 1.5,
-         xlim = c(x_start, x_end), ylim = y_range,
+         xlim = c(x_start, x_end), ylim = y_lim,
          xlab = "n", ylab = expression(n %.% R[n](G)),
          main = sprintf("%s / %s / %s", toupper(r$system), r$library, r$loss),
          cex.main = 1.0)

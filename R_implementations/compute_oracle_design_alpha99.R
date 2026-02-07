@@ -3,7 +3,24 @@ suppressPackageStartupMessages({
   library(Matrix)
 })
 
-setwd("/Users/arthur/myfile/Research simulation/Quantum_Xiaxuan/R_implementations")
+script_dir <- tryCatch({
+  cmd <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", cmd, value = TRUE)
+  if (length(file_arg) > 0) {
+    return(dirname(normalizePath(sub("^--file=", "", file_arg[1]))))
+  }
+  this_file <- sys.frame(1)$ofile
+  if (!is.null(this_file) && this_file != "") {
+    return(dirname(normalizePath(this_file)))
+  }
+  NULL
+}, error = function(e) NULL)
+
+if (!is.null(script_dir) && script_dir != "") {
+  setwd(script_dir)
+} else if (dir.exists("R_implementations")) {
+  setwd("R_implementations")
+}
 
 source("01_utilities.R")
 source("02_state_basis.R")
