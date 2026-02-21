@@ -1,0 +1,2 @@
+"alpha","alpha_name","case_num","case_id","system","library","loss","exact_better","gi1_better","oracle_gi1_better","uniform_final","exact_final","gi1_final","oracle_gi1_final","comment"
+0.9,"Case II",11,"2q_A_bures","2q","A","bures",FALSE,FALSE,TRUE,260.582120017593,270.697125801259,266.883616074963,254.440430108453,"Exact<Permutation: NO | GI1<Permutation: NO | OracleGI1<Permutation: YES"

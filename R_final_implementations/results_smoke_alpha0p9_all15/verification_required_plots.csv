@@ -1,0 +1,4 @@
+"filename","path","exists"
+"alpha_0p9_all15_relative_oracle_proxy.png","/Users/cyberslave/GitHub/quantum_tomography_2026/R_final_implementations/results_smoke_alpha0p9_all15/plots/alpha_0p9_all15_relative_oracle_proxy.png",TRUE
+"alpha_0p9_frobenius_mse_vs_oracle.png","/Users/cyberslave/GitHub/quantum_tomography_2026/R_final_implementations/results_smoke_alpha0p9_all15/plots/alpha_0p9_frobenius_mse_vs_oracle.png",TRUE
+"alpha_0p9_bures_sq_vs_oracle.png","/Users/cyberslave/GitHub/quantum_tomography_2026/R_final_implementations/results_smoke_alpha0p9_all15/plots/alpha_0p9_bures_sq_vs_oracle.png",TRUE

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>R_final_implementations Logic Summary</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1d2733; background: #f7fafc; }
+    h1, h2 { margin: 0 0 10px 0; }
+    .card { background: #fff; border: 1px solid #d9e2ec; border-radius: 8px; padding: 12px; margin: 12px 0; }
+    code { background: #eef3f8; padding: 1px 4px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { border: 1px solid #d9e2ec; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #eef3f8; }
+  </style>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['\\(','\\)'], ['$', '$']] } };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+  <h1>R_final_implementations: Numbered Spec Logic Summary</h1>
+  <p>This page summarizes each numbered markdown file and the corresponding script logic.</p>
+
+  <div class="card">
+    <h2>Mathematical Core</h2>
+    <p>State model: \(\rho(\theta)=I/N+\frac12\sum_j \theta_j\sigma_j\).</p>
+    <p>Proxy risk: \(R_n(G)=\mathrm{tr}(G J_n^{-1})\), where \(J_n=\sum_a N_a I_a\).</p>
+    <p>Multinomial adaptive sampling: each adaptive step draws \(\mathrm{Multinomial}(n_{trials}, p_a)\).</p>
+    <p>Baseline policy now uses permutation-cyclic setting selection (policy key remains <code>uniform</code>).</p>
+  </div>
+
+  <table>
+    <tr><th>Pair</th><th>Primary logic</th></tr>
+    <tr><td><code>00_simulation_parameters.*</code></td><td>Central parameter source, profile defaults, CLI/config merges, baseline-mode normalization.</td></tr>
+    <tr><td><code>01_utilities.*</code></td><td>Common helper functions for complex matrices, seeds, and utility operations.</td></tr>
+    <tr><td><code>02_state_basis.*</code></td><td>Basis builders and conversions between density matrices and Bloch coordinates.</td></tr>
+    <tr><td><code>03_measurement_library_1q.*</code></td><td>One-qubit measurement libraries L1/L2/L3 and associated indexing metadata.</td></tr>
+    <tr><td><code>04_measurement_library_2q.*</code></td><td>Two-qubit measurement libraries A/B and unified library objects.</td></tr>
+    <tr><td><code>05_mle_cvxr_solver.*</code></td><td>MLE estimation via CVX/PGD with density-floor control and solver diagnostics.</td></tr>
+    <tr><td><code>06_fisher_and_metrics.*</code></td><td>Fisher information, local metrics (Frobenius/Bures/observable), and risk proxies.</td></tr>
+    <tr><td><code>07_run_caseI_caseII_relative_oracle_multinomial.*</code></td><td>Main all-15 alpha runner, trajectory logging, oracle-limit comparisons, and plot generation.</td></tr>
+    <tr><td><code>08_verify_caseI_caseII_outputs.*</code></td><td>Post-run checks: \(\mathbb{E}[D(\hat{\rho},\rho)^2] \approx \frac{1}{n}\mathrm{tr}(G_D(\theta)\,I(\theta)^{-1})\) gap tables, plot existence, ranking checks, trajectory coverage.</td></tr>
+    <tr><td><code>09_replot_caseI_caseII_xranges.*</code></td><td>Replot from saved RDS with standardized x-range windows and summary panel regeneration.</td></tr>
+    <tr><td><code>10_run_case11_bures_rep1000_parallel.*</code></td><td>Dedicated case11 parallel runner and case11-specific proxy/relative/Bures plots.</td></tr>
+    <tr><td><code>11_build_alpha_plus_summary_pdf.*</code></td><td>Build compact 3-page alpha report PDF from three summary PNG files.</td></tr>
+    <tr><td><code>12_smoke_test_alpha0p9_all15.*</code></td><td>Fast end-to-end test orchestrator for run + PDF build + verification.</td></tr>
+  </table>
+
+  <div class="card">
+    <h2>Execution Flow</h2>
+    <ol>
+      <li>Load config from <code>00_simulation_parameters.R</code>.</li>
+      <li>Run simulation (<code>07</code> or <code>10</code>).</li>
+      <li>Generate compact PDF via <code>11</code>.</li>
+      <li>Validate output structure via <code>08</code>.</li>
+      <li>Use <code>12</code> for fast smoke validation.</li>
+    </ol>
+  </div>
+</body>
+</html>
